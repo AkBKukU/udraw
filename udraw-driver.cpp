@@ -109,7 +109,7 @@ void print_help(const char* argv0)
             << "  --gamepad   use the device as gamepad\n"
             << "  --keyboard  use the device as keyboard\n"
             << "  --accelerometer  use the accelerometer\n"
-            << "  --multi     use both the pen and your finger\n"
+            << "  --multi     use the device as graphic tablet and touchpad\n"
             << std::endl;
 }
 
