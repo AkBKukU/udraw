@@ -38,5 +38,6 @@ $ udraw-driver --keyboard
 
 $ udraw-driver --accelerometer
 
+$ udraw-driver --multi
 
 # EOF #

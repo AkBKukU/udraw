@@ -37,6 +37,8 @@
 #include "usb_device.hpp"
 #include "evdev.hpp"
 #include "udraw_decoder.hpp"
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
 
 class USBDevice;
 
@@ -83,13 +85,15 @@ struct Options
   bool touchpad_mode;
   bool tablet_mode;
   bool accelerometer_mode;
+  bool multi_mode;
 
   Options() :
     gamepad_mode(false),
     keyboard_mode(false),
     touchpad_mode(false),
     tablet_mode(false),
-    accelerometer_mode(false)
+    accelerometer_mode(false),
+    multi_mode(false)
   {}
 };
 
@@ -105,7 +109,22 @@ void print_help(const char* argv0)
             << "  --gamepad   use the device as gamepad\n"
             << "  --keyboard  use the device as keyboard\n"
             << "  --accelerometer  use the accelerometer\n"
+            << "  --multi     use both the pen and your finger\n"
             << std::endl;
+}
+
+// Get mouse coordinates
+void
+coords (Display *display, int *x, int *y)
+{
+  XEvent event;
+  XQueryPointer (display, DefaultRootWindow (display),
+                 &event.xbutton.root, &event.xbutton.window,
+                 &event.xbutton.x_root, &event.xbutton.y_root,
+                 &event.xbutton.x, &event.xbutton.y,
+                 &event.xbutton.state);
+  *x = event.xbutton.x;
+  *y = event.xbutton.y;
 }
 
 Options parse_args(int argc, char** argv)
@@ -134,6 +153,10 @@ Options parse_args(int argc, char** argv)
     {
       opts.accelerometer_mode = true;
     }
+    else if (strcmp("--multi", argv[i]) == 0)
+    {
+      opts.multi_mode = true;
+    }
     else if (strcmp("--help", argv[i]) == 0 ||
              strcmp("-h", argv[i]) == 0)
     {
@@ -152,6 +175,15 @@ Options parse_args(int argc, char** argv)
 
 int main(int argc, char** argv)
 {
+  
+  // Open X display
+  Display *display = XOpenDisplay (NULL);
+  if (display == NULL)
+    {
+      fprintf (stderr, "Can't open display!\n");
+      return -1;
+    }  
+  
   Options opts = parse_args(argc, argv);
 
   usb_init();
@@ -174,6 +206,15 @@ int main(int argc, char** argv)
   bool pinch_touching = false;
   bool scroll_wheel = false;
   int wheel_distance = 0;
+  int x_distance = 0;
+  int y_distance = 0;
+  int first_cur_x = 0, first_cur_y = 0;
+  int SCREEN_X = XDisplayWidth(display, XDefaultScreen(display));
+  int SCREEN_Y = XDisplayHeight(display, XDefaultScreen(display));
+  int UDRAW_MAX_X = 1913;
+  int UDRAW_MAX_Y = 1076;
+  
+  std::cout << "Screen X: " << SCREEN_X << " ScreenY: " << SCREEN_Y << "\n" ;
             
   if (dev)
   {
@@ -216,8 +257,8 @@ int main(int argc, char** argv)
     }
     else if (opts.tablet_mode)
     {
-      evdev.add_abs(ABS_X, 0, 1913, 0, 0);
-      evdev.add_abs(ABS_Y, 0, 1076, 0, 0);
+      evdev.add_abs(ABS_X, 0, UDRAW_MAX_X, 0, 0);
+      evdev.add_abs(ABS_Y, 0, UDRAW_MAX_Y, 0, 0);
       evdev.add_abs(ABS_PRESSURE, 0, 143, 0, 0);
 
       evdev.add_key(BTN_TOUCH);
@@ -235,6 +276,31 @@ int main(int argc, char** argv)
     }
     else if (opts.touchpad_mode)
     {
+      evdev.add_key(BTN_LEFT);
+      evdev.add_key(BTN_RIGHT);
+      evdev.add_key(BTN_MIDDLE);
+
+    /*
+      add_key(KEY_FORWARD);
+      add_key(KEY_BACK);
+    */
+
+      evdev.add_rel(REL_WHEEL);
+      evdev.add_rel(REL_HWHEEL);
+
+      evdev.add_rel(REL_X);
+      evdev.add_rel(REL_Y);
+    }
+    else if (opts.multi_mode)
+    {
+      
+      evdev.add_abs(ABS_X, 0, UDRAW_MAX_X, 0, 0);
+      evdev.add_abs(ABS_Y, 0, UDRAW_MAX_Y, 0, 0);
+      evdev.add_abs(ABS_PRESSURE, 0, 143, 0, 0);
+
+      evdev.add_key(BTN_TOUCH);
+      evdev.add_key(BTN_TOOL_PEN);
+      
       evdev.add_key(BTN_LEFT);
       evdev.add_key(BTN_RIGHT);
       evdev.add_key(BTN_MIDDLE);
@@ -296,9 +362,9 @@ int main(int argc, char** argv)
            evdev.send(EV_KEY, BTN_LEFT,  decoder.get_guide());
            evdev.send(EV_KEY, BTN_RIGHT, decoder.get_start());
            evdev.send(EV_KEY, KEY_LEFTMETA, decoder.get_select());
+           
            if (decoder.get_mode() == UDrawDecoder::PEN_MODE)
            {
-             std::cout << "Pen Mode\n" ;
              evdev.send(EV_ABS, ABS_X, decoder.get_x());
              evdev.send(EV_ABS, ABS_Y, decoder.get_y());
              evdev.send(EV_ABS, ABS_PRESSURE, decoder.get_pressure());
@@ -315,61 +381,14 @@ int main(int argc, char** argv)
 
              evdev.send(EV_SYN, SYN_REPORT, 0);
            }
-           else if (decoder.get_mode() == UDrawDecoder::FINGER_MODE)
-           {
-             std::cout << "Finger Mode\n" ;
-             if (!finger_touching)
-             {
-               std::cout << "  Finger is touching\n" ;
-               touch_pos_x = decoder.get_x();
-               touch_pos_y = decoder.get_y();
-               finger_touching = true;
-
-               if (touch_pos_x > 1800)
-               {
-                 std::cout << "    Finger is in wheel area\n" ;
-                 scroll_wheel = true;
-                 wheel_distance = 0;
-               }
-               else
-               {
-                 scroll_wheel = false;
-               }
-             }
-
-             if (scroll_wheel)
-             {
-               wheel_distance += (decoder.get_y() - touch_pos_y) / 10;
-
-               int rel = wheel_distance/10;
-               if (rel != 0)
-               {
-                 evdev.send(EV_REL, REL_WHEEL, -rel);
-
-                 wheel_distance -= rel;
-                 touch_pos_x = decoder.get_x();
-                 touch_pos_y = decoder.get_y();
-                 std::cout << rel << " " << wheel_distance << std::endl;
-                 evdev.send(EV_SYN, SYN_REPORT, 0);
-               }
-             }
-             else
-             {
-               evdev.send(EV_REL, REL_X, decoder.get_x() - touch_pos_x);
-               evdev.send(EV_REL, REL_Y, decoder.get_y() - touch_pos_y);
-
-               touch_pos_x = decoder.get_x();
-               touch_pos_y = decoder.get_y();
-                 evdev.send(EV_SYN, SYN_REPORT, 0);
-             }
-           }
+           
            else
            {
              std::cout << "Nothing\n" ;
-             finger_touching = false;
              evdev.send(EV_KEY, BTN_TOOL_PEN, 0);
-             evdev.send(EV_SYN, SYN_REPORT, 0);
+            evdev.send(EV_SYN, SYN_REPORT, 0);
            }
+           
          }
          else if (opts.touchpad_mode)
          {
@@ -479,6 +498,104 @@ int main(int argc, char** argv)
              
              std::cout << std::endl;
            }
+         }
+         else if (opts.multi_mode)
+         {
+           
+           int cur_x, cur_y;
+           coords (display, &cur_x, &cur_y);
+           evdev.send(EV_KEY, BTN_LEFT,  decoder.get_guide());
+           evdev.send(EV_KEY, BTN_RIGHT, decoder.get_start());
+           evdev.send(EV_KEY, KEY_LEFTMETA, decoder.get_select());
+           
+           if (decoder.get_mode() == UDrawDecoder::PEN_MODE)
+           {
+             evdev.send(EV_ABS, ABS_X, decoder.get_x());
+             evdev.send(EV_ABS, ABS_Y, decoder.get_y());
+             evdev.send(EV_ABS, ABS_PRESSURE, decoder.get_pressure());
+             evdev.send(EV_KEY, BTN_TOOL_PEN, 1);
+             
+             if (decoder.get_pressure() > 0)
+             {
+               evdev.send(EV_KEY, BTN_TOUCH, 1);
+             }
+             else
+             {
+               evdev.send(EV_KEY, BTN_TOUCH, 0);
+             }
+
+           }
+           
+           if (decoder.get_mode() == UDrawDecoder::FINGER_MODE)
+           {
+             if (!finger_touching)
+             {
+              std::cout << "Finger Touch X: " << decoder.get_x() << "  Y: " << decoder.get_y() << "\n" ;
+               touch_pos_x = decoder.get_x();
+               touch_pos_y = decoder.get_y();
+               first_cur_x = cur_x;
+               first_cur_y = cur_y;
+               finger_touching = true;
+
+               if (touch_pos_x > 1800)
+               {
+              std::cout << "Scroll AreaX\n" ;
+                 scroll_wheel = true;
+                 wheel_distance = 0;
+               }
+               else
+               {
+                 scroll_wheel = false;
+                 y_distance = 0;
+                 x_distance = 0;
+               }
+             }
+             else
+             {
+             }
+
+             if (scroll_wheel)
+             {
+               wheel_distance += (decoder.get_y() - touch_pos_y) / 10;
+
+               int rel = wheel_distance/10;
+               if (rel != 0)
+               {
+                 evdev.send(EV_REL, REL_WHEEL, -rel);
+
+                 wheel_distance -= rel;
+                 std::cout << rel << " " << wheel_distance << std::endl;
+               }
+             }
+             else
+             {
+             
+               x_distance += (decoder.get_x() - touch_pos_x);
+               y_distance += (decoder.get_y() - touch_pos_y);
+               
+               float screen_adj_x = UDRAW_MAX_X / SCREEN_X;
+               float screen_adj_y = UDRAW_MAX_Y / SCREEN_Y;
+               
+               
+               int x_rel = (first_cur_x + x_distance) * UDRAW_MAX_X / SCREEN_X;
+               int y_rel = (first_cur_y + y_distance) * UDRAW_MAX_Y / SCREEN_Y;
+               
+               
+               evdev.send(EV_ABS, ABS_X, x_rel);
+               evdev.send(EV_ABS, ABS_Y, y_rel);
+               std::cout << "X-Adj: " << screen_adj_x << " Disatnce: " << x_distance << " Rel: " << x_rel<< "\n" ;
+               std::cout << "Y-Adj: " << UDRAW_MAX_Y / SCREEN_Y << " Disatnce: " << y_distance << " Rel: " << y_rel<< "\n" ;
+               
+               touch_pos_x = decoder.get_x();
+               touch_pos_y = decoder.get_y();
+             }
+           }
+           else
+           {
+             finger_touching = false;
+             evdev.send(EV_KEY, BTN_TOOL_PEN, 0);
+           }  
+           evdev.send(EV_SYN, SYN_REPORT, 0);
          }
          else
          {
