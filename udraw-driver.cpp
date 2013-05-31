@@ -300,6 +300,7 @@ int main(int argc, char** argv)
 
       evdev.add_key(BTN_TOUCH);
       evdev.add_key(BTN_TOOL_PEN);
+      evdev.add_key(KEY_LEFTMETA);
       
       evdev.add_key(BTN_LEFT);
       evdev.add_key(BTN_RIGHT);
