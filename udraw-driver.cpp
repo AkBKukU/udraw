@@ -302,6 +302,11 @@ int main(int argc, char** argv)
       evdev.add_key(BTN_TOOL_PEN);
       evdev.add_key(KEY_LEFTMETA);
       
+      evdev.add_key(KEY_UP);
+      evdev.add_key(KEY_DOWN);
+      evdev.add_key(KEY_LEFT);
+      evdev.add_key(KEY_RIGHT);
+      
       evdev.add_key(BTN_LEFT);
       evdev.add_key(BTN_RIGHT);
       evdev.add_key(BTN_MIDDLE);
@@ -505,9 +510,15 @@ int main(int argc, char** argv)
            
            int cur_x, cur_y;
            coords (display, &cur_x, &cur_y);
+           
            evdev.send(EV_KEY, BTN_LEFT,  decoder.get_guide());
            evdev.send(EV_KEY, BTN_RIGHT, decoder.get_start());
            evdev.send(EV_KEY, KEY_LEFTMETA, decoder.get_select());
+           
+           evdev.send(EV_KEY, KEY_UP, decoder.get_up());
+           evdev.send(EV_KEY, KEY_DOWN, decoder.get_down());
+           evdev.send(EV_KEY, KEY_LEFT,  decoder.get_left());
+           evdev.send(EV_KEY, KEY_RIGHT,   decoder.get_right());
            
            if (decoder.get_mode() == UDrawDecoder::PEN_MODE)
            {
