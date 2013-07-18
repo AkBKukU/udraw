@@ -306,6 +306,9 @@ int main(int argc, char** argv)
       evdev.add_key(KEY_DOWN);
       evdev.add_key(KEY_LEFT);
       evdev.add_key(KEY_RIGHT);
+      evdev.add_key(KEY_ENTER);
+      evdev.add_key(KEY_ESC);
+      evdev.add_key(KEY_SPACE);
       
       evdev.add_key(BTN_LEFT);
       evdev.add_key(BTN_RIGHT);
@@ -519,6 +522,9 @@ int main(int argc, char** argv)
            evdev.send(EV_KEY, KEY_DOWN, decoder.get_down());
            evdev.send(EV_KEY, KEY_LEFT,  decoder.get_left());
            evdev.send(EV_KEY, KEY_RIGHT,   decoder.get_right());
+           evdev.send(EV_KEY, KEY_ENTER,  decoder.get_cross());
+           evdev.send(EV_KEY, KEY_ESC,   decoder.get_triangle());
+           evdev.send(EV_KEY, KEY_SPACE,   decoder.get_circle());
            
            if (decoder.get_mode() == UDrawDecoder::PEN_MODE)
            {
